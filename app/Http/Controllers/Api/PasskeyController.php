@@ -2,15 +2,17 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Session;
+use App\Models\Passkey;
 use Illuminate\Support\Str;
-use Webauthn\AuthenticatorSelectionCriteria;
-use Webauthn\PublicKeyCredentialCreationOptions;
-use Webauthn\PublicKeyCredentialRequestOptions;
+use Illuminate\Http\Request;
+use App\Http\Controllers\Controller;
+use Illuminate\Support\Facades\Session;
+use Webauthn\PublicKeyCredentialSource;
 use Webauthn\PublicKeyCredentialRpEntity;
 use Webauthn\PublicKeyCredentialUserEntity;
+use Webauthn\AuthenticatorSelectionCriteria;
+use Webauthn\PublicKeyCredentialRequestOptions;
+use Webauthn\PublicKeyCredentialCreationOptions;
 
 class PasskeyController extends Controller
 {
@@ -31,10 +33,6 @@ class PasskeyController extends Controller
                 displayName: $request->user()->name
             ),
             challenge: Str::random(),
-            authenticatorSelection: new AuthenticatorSelectionCriteria(
-                authenticatorAttachment: AuthenticatorSelectionCriteria::AUTHENTICATOR_ATTACHMENT_NO_PREFERENCE,
-                requireResidentKey: true
-            )
         );
 
         Session::flash('passkey-registration-options', $options);
@@ -42,11 +40,19 @@ class PasskeyController extends Controller
         return $options;
     }
 
-    public function authenticateOptions()
+    public function authenticateOptions(Request $request)
     {
+        $allowed_credentials = $request->filled('email') ?
+            Passkey::whereRelation('user', 'email', $request->email)
+                ->get()
+                ->map(fn(Passkey $passkey) => $passkey->data)
+                ->map(fn(PublicKeyCredentialSource $pkcs) => $pkcs->getPublicKeyCredentialDescriptor())
+                ->all() : [];
+
         $options = new PublicKeyCredentialRequestOptions(
             challenge: Str::random(),
-            rpId: parse_url(config('app.url'), PHP_URL_HOST)
+            rpId: parse_url(config('app.url'), PHP_URL_HOST),
+            allowCredentials: $allowed_credentials
         );
 
         Session::flash('passkey-authentication-options', $options);
