@@ -2,11 +2,13 @@
 
 namespace App\Http\Controllers\Api;
 
-use Illuminate\Support\Str;
-use Illuminate\Http\Request;
 use App\Http\Controllers\Controller;
-use Webauthn\PublicKeyCredentialRpEntity;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Session;
+use Illuminate\Support\Str;
+use Webauthn\AuthenticatorSelectionCriteria;
 use Webauthn\PublicKeyCredentialCreationOptions;
+use Webauthn\PublicKeyCredentialRpEntity;
 use Webauthn\PublicKeyCredentialUserEntity;
 
 class PasskeyController extends Controller
@@ -24,7 +26,13 @@ class PasskeyController extends Controller
                 displayName: $request->user()->name
             ),
             challenge: Str::random(),
+            authenticatorSelection: new AuthenticatorSelectionCriteria(
+                authenticatorAttachment: AuthenticatorSelectionCriteria::AUTHENTICATOR_ATTACHMENT_NO_PREFERENCE,
+                requireResidentKey: true
+            )
         );
+
+        Session::flash('passkey-registration-options', $options);
 
         return $options;
     }

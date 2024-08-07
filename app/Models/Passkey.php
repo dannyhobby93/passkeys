@@ -10,6 +10,8 @@ class Passkey extends Model
 {
     use HasFactory;
 
+    protected $fillable = ['name', 'credential_id', 'data'];
+
     protected function casts()
     {
         return [
