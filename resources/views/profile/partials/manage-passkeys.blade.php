@@ -1,6 +1,6 @@
 <section>
     <header>
-        <h2 class="text-lg font-medium text-gray-900">
+        <h2 id="managePasskeys" class="text-lg font-medium text-gray-900">
             {{ __('Manage Passkeys') }}
         </h2>
 
@@ -9,14 +9,15 @@
         </p>
     </header>
 
-    <form x-data="registerPasskey" x-on:submit.prevent="register($el)" name="createPasskey" method="post"
-        action="{{ route('passkeys.store') }}" class="mt-6 space-y-6">
+    <form x-data="registerPasskey" x-show="browserSupportsWebAuthn()" x-on:submit.prevent="register($el)"
+        name="createPasskey" method="post" action="{{ route('passkeys.store') }}" class="mt-6 space-y-6">
         @csrf
 
         <div>
             <x-input-label for="create_passkey_passkey_name" :value="__('Passkey Name')" />
-            <x-text-input id="create_passkey_passkey_name" name="name" class="mt-1 block w-full" />
+            <x-text-input x-model="name" id="create_passkey_passkey_name" name="name" class="mt-1 block w-full" />
             <x-input-error :messages="$errors->createPasskey->get('name')" class="mt-2" />
+            <x-alpine-input-error messages="errors?.name" />
         </div>
 
         <div class="flex items-center gap-4">
@@ -35,12 +36,11 @@
                             {{ $passkey->created_at->diffForHumans() }}</span>
                     </div>
 
-                    <form method="post" action="{{ route('passkeys.destroy', ['passkey' => $passkey->id]) }}">
+                    <form method="post" action="{{ route('passkeys.destroy', $passkey) }}">
                         @csrf
                         @method('DELETE')
 
-                        <input type="hidden" name="id" value="">
-                        <x-danger-button class="">Remove</x-danger-button>
+                        <x-danger-button>Remove</x-danger-button>
                     </form>
                 </li>
             @endforeach

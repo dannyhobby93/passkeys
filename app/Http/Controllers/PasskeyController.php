@@ -4,31 +4,59 @@ namespace App\Http\Controllers;
 
 use App\Models\Passkey;
 use Illuminate\Http\Request;
+use Webauthn\PublicKeyCredential;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Session;
+use Webauthn\AuthenticatorAssertionResponse;
 use Illuminate\Validation\ValidationException;
-use Webauthn\AttestationStatement\AttestationStatementSupportManager;
 use Webauthn\AuthenticatorAttestationResponse;
-use Webauthn\AuthenticatorAttestationResponseValidator;
 use Webauthn\Denormalizer\WebauthnSerializerFactory;
-use Webauthn\PublicKeyCredential;
+use Webauthn\AuthenticatorAssertionResponseValidator;
+use Webauthn\AuthenticatorAttestationResponseValidator;
+use Webauthn\AttestationStatement\AttestationStatementSupportManager;
 
 class PasskeyController extends Controller
 {
-    /**
-     * Display a listing of the resource.
-     */
-    public function index()
+    public function authenticate(Request $request)
     {
-        //
-    }
+        $data = $request->validate(['answer' => 'required|json']);
 
-    /**
-     * Show the form for creating a new resource.
-     */
-    public function create()
-    {
-        //
+        /** @var PublicKeyCredential $public_key_credential */
+        $public_key_credential = (new WebauthnSerializerFactory(AttestationStatementSupportManager::create()))
+            ->create()
+            ->deserialize($data['answer'], PublicKeyCredential::class, 'json');
+
+        if (!$public_key_credential->response instanceof AuthenticatorAssertionResponse) {
+            return to_route('profile.edit')->withFragment('managePasskeys');
+        }
+
+        $passkey = Passkey::firstWhere('credential_id', $public_key_credential->rawId);
+
+        if (!$passkey) {
+            throw ValidationException::withMessages(['answer' => 'This passkey is not valid.']);
+        }
+
+        try {
+            $public_key_credential_source = AuthenticatorAssertionResponseValidator::create()->check(
+                credentialId: $passkey->data,
+                authenticatorAssertionResponse: $public_key_credential->response,
+                publicKeyCredentialRequestOptions: Session::get('passkey-authentication-options'),
+                request: $request->getHost(),
+                userHandle: null,
+            );
+        } catch (\Throwable $e) {
+            throw ValidationException::withMessages([
+                'answer' => 'This passkey is not valid.'
+            ]);
+        }
+
+        $passkey->update(['data' => $public_key_credential_source]);
+
+        Auth::loginUsingId($passkey->user_id);
+        $request->session()->regenerate();
+
+        return to_route('dashboard');
     }
 
     /**
@@ -36,7 +64,7 @@ class PasskeyController extends Controller
      */
     public function store(Request $request)
     {
-        $data = $request->validate([
+        $data = $request->validateWithBag('createPasskey', [
             'name' => 'required|string|min:3|max:255',
             'passkey' => 'required|json',
         ]);
@@ -49,8 +77,8 @@ class PasskeyController extends Controller
         if (!$public_key_credential->response instanceof AuthenticatorAttestationResponse) {
             return to_route('login');
         }
-        try {
 
+        try {
             $public_key_credential_source = AuthenticatorAttestationResponseValidator::create()->check(
                 authenticatorAttestationResponse: $public_key_credential->response,
                 publicKeyCredentialCreationOptions: Session::get('passkey-registration-options'),
@@ -64,35 +92,10 @@ class PasskeyController extends Controller
 
         $request->user()->passkeys()->create([
             'name' => $data['name'],
-            'credential_id' => $public_key_credential_source->publicKeyCredentialId,
             'data' => $public_key_credential_source
         ]);
 
         return to_route('profile.edit')->withFragment('managePasskeys');
-    }
-
-    /**
-     * Display the specified resource.
-     */
-    public function show(Passkey $passkey)
-    {
-        //
-    }
-
-    /**
-     * Show the form for editing the specified resource.
-     */
-    public function edit(Passkey $passkey)
-    {
-        //
-    }
-
-    /**
-     * Update the specified resource in storage.
-     */
-    public function update(Request $request, Passkey $passkey)
-    {
-        //
     }
 
     /**
